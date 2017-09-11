@@ -21,13 +21,14 @@
 
 'use strict';
 
-const applicationServerPublicKey = '<Your Public Key>';
+const applicationServerPublicKey = 'BCdhl-56EMqv50TYxZDWYnEKNms1GPb-FPx7hC3wz1JOswqH0U3N40vWZvPDgE_jn5FQch9zVZZgttZh7WLe8Cc';
 
 const pushButton = document.querySelector('.js-push-btn');
 
 let isSubscribed = false;
 let swRegistration = null;
 
+// hmm.., ini sebenarnya agak membingungkan juga ya buat apa? --> ini spec utk yg metode VAPID itu, ini standar kok, jadi terima aja :D (y)
 function urlB64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
   const base64 = (base64String + padding)
@@ -41,4 +42,109 @@ function urlB64ToUint8Array(base64String) {
     outputArray[i] = rawData.charCodeAt(i);
   }
   return outputArray;
+}
+
+function initialiseUI() {
+    pushButton.addEventListener('click', () => {
+        pushButton.disabled = true
+        if (isSubscribed) {
+            unsubscribeUser()
+        } else {
+            subscribeUser()
+        }
+    })
+    
+    // Set the initial subscription value
+    swRegistration.pushManager.getSubscription()
+        .then(subscription => {
+            isSubscribed = !(subscription === null)
+            if(isSubscribed){
+                console.log('User IS subscribed')
+            } else {
+                console.log('User is NOT subscribed')
+            }
+            updateBtn()
+        })
+}
+
+function subscribeUser() {
+    const applicationServerKey = urlB64ToUint8Array(applicationServerPublicKey)
+    console.log('applicationServerKey: ' + applicationServerKey)
+    swRegistration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: applicationServerKey,
+    })
+    .then(subscription => {
+        console.log('User is subscribed')
+        updateSubscriptionOnServer(subscription)
+        isSubscribed = true
+        updateBtn()
+    })
+    .catch(err => {
+        console.log('Failed to subscribe the user: ', err)
+        updateBtn()
+    })
+}
+
+function updateBtn() {
+    if(Notification.permission === 'denied') {
+        pushButton.textContent = 'Push Messaging Blocked'
+        pushButton.disabled = true
+        updateSubscriptionOnServer(null)
+        return
+    }
+        
+    if(isSubscribed) {
+        pushButton.textContent = 'Disable Push Messaging'
+    } else {
+        pushButton.textContent = 'Enable Push Messaging'
+    }
+    pushButton.disabled = false
+}
+
+function updateSubscriptionOnServer(subscription) {
+    // TODO: Send subscription to application server
+    const subscriptionJson = document.querySelector('.js-subscription-json')
+    const subscriptionDetails = document.querySelector('.js-subscription-details')
+    
+    if (subscription) {
+        subscriptionJson.textContent = JSON.stringify(subscription)
+        subscriptionDetails.classList.remove('is-invisible')
+    } else {
+        subscriptionDetails.classList.add('is-invisible')
+    }
+}
+
+function unsubscribeUser() {
+    swRegistration.pushManager.getSubscription()
+        .then(subscription => {
+            if(subscription){
+                return subscription.unsubscribe()
+            }
+        })
+        .catch(err => {
+            console.log('Error unsubscribing', err)
+        })
+        .then(() => {
+            updateSubscriptionOnServer(null)
+            console.log('User is unsubscribed')
+            isSubscribed = false
+            updateBtn()
+        })
+}
+
+if ('serviceWorker' in navigator && 'PushManager' in window) {
+    console.log('Service Worker and Push is supported')
+    navigator.serviceWorker.register('sw.js')
+        .then(swReg => {
+            console.log('Service worker is registered', swReg)
+            swRegistration = swReg
+            initialiseUI()
+        })
+        .catch(error => {
+            console.error('Service Worker Error', error)
+        })
+} else {
+    console.warn('Push messaging is not supported')
+    pushButton.textContent = 'Push not supported'
 }
